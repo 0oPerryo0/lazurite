@@ -22,13 +22,13 @@ export function catalogCounts(songs){return {songs:songs.length,difficulties:son
 export function resourceVariant(song,library){const duplicate=library.filter(s=>s.title===song.title).length>1;return duplicate?(song.difficulties.every(d=>d.id>3)?'Additional resource variant':'Standard resource variant'):'';}
 // The viewer's chart title, used both when a chart is opened and when the settings screen returns
 // to a parked chart (whose document title was replaced by the settings screen's own title).
-export function chartDocumentTitle(song,difficulty){return song&&difficulty?`${song.title} · ${difficulty.name} · Crystallium`:'Crystallium · Chart desk';}
+export function chartDocumentTitle(song,difficulty){return song&&difficulty?`${song.title} · ${difficulty.name} · Lazurite`:'Lazurite';}
 // Same title, derived straight from a deep-link route so it can be restored before the chart JSON
 // has arrived (the route already names the record; the parsed chart JSON is not required).
 export function chartDocumentTitleForRoute(hash,library){
   const match=/^#\/chart\/([^/]+)\/(\d+)$/.exec(String(hash||''));
-  if(!match)return 'Crystallium · Chart desk';
-  let id;try{id=decodeURIComponent(match[1]);}catch{return 'Crystallium · Chart desk';}
+  if(!match)return 'Lazurite';
+  let id;try{id=decodeURIComponent(match[1]);}catch{return 'Lazurite';}
   const song=(library||[]).find(s=>s.id===id);
   return chartDocumentTitle(song,song?.difficulties.find(d=>d.id===Number(match[2])));
 }
@@ -137,7 +137,7 @@ export async function startApp(){
   function showSettings(){
     settingsOpen=true;
     $('catalog-view').hidden=true;$('viewer-view').hidden=true;$('settings-view').hidden=false;
-    $('inspect-toggle').hidden=true;$('count').hidden=true;document.title='Settings · Crystallium';
+    $('inspect-toggle').hidden=true;$('count').hidden=true;document.title='Settings · Lazurite';
     $('settings-origin').textContent=settingsReturn&&settingsReturn!=='#songs'?'Back returns to the chart you opened; it stays paused.':'Back returns to the catalog.';
     requestAnimationFrame(()=>{if(settingsOpen&&!$('settings-view').hidden)$('settings-title').focus({preventScroll:true});});
   }
@@ -213,7 +213,7 @@ export async function startApp(){
       if(!viewerActive||settingsOpen)return;
       renderer.resize();
       // Restore the parked chart's tab title from the route itself, so returning before the chart
-      // JSON settles does not leave "Settings · Crystallium" behind. Only for the exact parked
+      // JSON settles does not leave "Settings · Lazurite" behind. Only for the exact parked
       // route: any other navigation owns the title through openViewer/loadSong.
       if(parkedRoute&&activeRoute===parkedRoute)document.title=chartDocumentTitleForRoute(parkedRoute,library);
       const target=lastSettingsLink?.isConnected?lastSettingsLink:$('title');
@@ -226,7 +226,7 @@ export async function startApp(){
     settingsOpen=false;settingsSession=null;settingsReturn=null;$('settings-view').hidden=true;$('count').hidden=false;
     if(objectUrl){URL.revokeObjectURL(objectUrl);objectUrl=null;}customAudio=null;$('audio-file').value='';
     $('viewer-view').hidden=true;$('inspect-toggle').hidden=true;$('catalog-view').hidden=false;
-    $('catalog-message').textContent=message;$('catalog-message').hidden=!message;document.title='Crystallium · Songs';
+    $('catalog-message').textContent=message;$('catalog-message').hidden=!message;document.title='Lazurite';
     // Clear a completed or in-flight audio source only after its serialized load settles.
     const generation=loadGeneration;queueAudio(async()=>{if(generation!==loadGeneration||viewerActive)return;await clock.load(null);clock.pause();});
     if(wasViewer)requestAnimationFrame(()=>{if(viewerActive)return;$('catalog-scroll').scrollLeft=catalogPosition.left;(catalogPosition.focus?.isConnected?catalogPosition.focus:$('search')).focus({preventScroll:true});window.scrollTo(0,catalogPosition.top);});

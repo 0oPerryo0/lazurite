@@ -23,15 +23,15 @@ test('serialized audio reload pauses captured playback and stale completion even
 test('current guarded audio load stays paused for caller-controlled playback',async()=>{const clock={playing:true,pause(){this.playing=false;},async load(){assert.equal(this.playing,false);}};assert.equal(await loadGuardedAudio(clock,'current.wav',{},()=>true),true);assert.equal(clock.playing,false);});
 test('catalog aliases require no auto-selected chart',()=>{for(const hash of ['', '#', '#songs'])assert.deepEqual(resolveRoute(hash,library),{view:'catalog'});});
 test('settings is its own third-screen hash route, not a chart or catalog alias',()=>{assert.equal(settingsHref,'#settings');assert.deepEqual(resolveRoute('#settings',library),{view:'settings'});for(const hash of ['#Settings','#setting','#settings/','#settings ','#/settings','#/chart/settings/0']){const route=resolveRoute(hash,library);assert.equal(route.view,'catalog',hash);assert.ok(route.error,hash);}});
-test('returning from settings restores the viewer document title for the parked record',()=>{const song=library[0],difficulty=song.difficulties[0];assert.equal(chartDocumentTitle(song,difficulty),`${song.title} · ${difficulty.name} · Crystallium`);assert.ok(chartDocumentTitle(song,difficulty).endsWith(' · Crystallium'),'must not leave the settings title behind');assert.equal(chartDocumentTitle(null,null),'Crystallium · Chart desk');});
+test('returning from settings restores the viewer document title for the parked record',()=>{const song=library[0],difficulty=song.difficulties[0];assert.equal(chartDocumentTitle(song,difficulty),`${song.title} · ${difficulty.name} · Lazurite`);assert.ok(chartDocumentTitle(song,difficulty).endsWith(' · Lazurite'),'must not leave the settings title behind');assert.equal(chartDocumentTitle(null,null),'Lazurite');});
 test('a parked route names its own title before the chart JSON arrives',()=>{
   const song=library.find(s=>s.difficulties.length>1);
   for(const difficulty of song.difficulties)
-    assert.equal(chartDocumentTitleForRoute(chartHash(song.id,difficulty.id),library),`${song.title} · ${difficulty.name} · Crystallium`,'route '+chartHash(song.id,difficulty.id));
+    assert.equal(chartDocumentTitleForRoute(chartHash(song.id,difficulty.id),library),`${song.title} · ${difficulty.name} · Lazurite`,'route '+chartHash(song.id,difficulty.id));
   // A route that does not resolve to a real record must never leave the settings title behind.
   for(const hash of ['#songs','#settings','#/chart/nope/0',chartHash(song.id,99),'#/chart/%ZZ/0',''])
-    assert.equal(chartDocumentTitleForRoute(hash,library),'Crystallium · Chart desk','route '+hash);
-  assert.equal(chartDocumentTitleForRoute(chartHash('試験 / #?',3),[{id:'試験 / #?',title:'T',difficulties:[{id:3,name:'Astral'}]}]),'T · Astral · Crystallium');
+    assert.equal(chartDocumentTitleForRoute(hash,library),'Lazurite','route '+hash);
+  assert.equal(chartDocumentTitleForRoute(chartHash('試験 / #?',3),[{id:'試験 / #?',title:'T',difficulties:[{id:3,name:'Astral'}]}]),'T · Astral · Lazurite');
 });
 test('overlapping-slide preference defaults to unchecked for absent or invalid storage',()=>{
   assert.deepEqual(defaultSettings,{showOverlappingSlides:false});
