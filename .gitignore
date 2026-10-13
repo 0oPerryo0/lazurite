@@ -15,6 +15,11 @@ aa-*.mjs
 tmp-diag.mjs
 reference-inspect.mjs
 
+# Agent working notes. Not part of the published viewer.
+AGENTS.md
+CONTRACTS.md
+AUDIO.md
+
 # Editor and OS junk.
 .DS_Store
 Thumbs.db
