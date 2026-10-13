@@ -1,4 +1,4 @@
-# Lazurite - Crystallium Chart Viewer
+# Lazurite
 
 Local, read-only chart viewer. `website_loader/` is self-contained: it carries its own frontend, the published chart payloads (`charts/`), the track texture (`assets/texture-435.png`) and the generated catalog manifest (`library.json`). It can be uploaded and served on its own, from a domain root or a GitHub Pages project sub-path. The original workspace evidence stays outside this directory and is read-only.
 
