@@ -1,0 +1,22 @@
+# Local check output. The site does not need these.
+*.log
+verification-final.txt
+browser-verification-final.txt
+
+# Screenshots and one-off probes from local checks.
+selection-*.png
+settings-*.png
+overlap-*.png
+preview-*.png
+reference-*.png
+reference-observations.json
+aa-*.png
+aa-*.mjs
+tmp-diag.mjs
+reference-inspect.mjs
+
+# Editor and OS junk.
+.DS_Store
+Thumbs.db
+desktop.ini
+node_modules/

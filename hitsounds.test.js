@@ -1,0 +1,8 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {HitSoundPlayer} from './hitsounds.js';
+function player(){const p=new HitSoundPlayer();p.setChart({notes:[{points:[{time:1}]},{points:[{time:2}]},{points:[{time:2}]},{points:[{time:3}]}]});p.clicks=[];p.tap=n=>p.clicks.push(n);return p;}
+test('crossing each note head emits once; chords are normalized',()=>{const p=player();p.reset(0.9);assert.equal(p.update(1.1,true),1);p.update(1.2,true);p.reset(1.9);assert.equal(p.update(2.1,true),2);assert.deepEqual(p.clicks,[1,2]);});
+test('seeks and paused scrubbing do not emit missed-note bursts',()=>{const p=player();p.update(3.5,true);p.update(1.5,false);assert.deepEqual(p.clicks,[]);p.reset(1.9);p.update(2.1,true);assert.deepEqual(p.clicks,[2]);});
+test('disabled and muted clicks remain silent',()=>{const p=player();p.enabled=false;p.reset(0.9);p.update(1.1,true);p.enabled=true;p.volume=0;p.reset(1.9);p.update(2.1,true);assert.deepEqual(p.clicks,[]);});
+test('local oscillator is short, counts note heads, and disconnects',()=>{let stopped;const node={frequency:{setValueAtTime(){},exponentialRampToValueAtTime(){}},connect(){},disconnect(){},start(){},stop(t){stopped=t;}};const gain={gain:{setValueAtTime(){},exponentialRampToValueAtTime(){}},connect(){},disconnect(){}};const ctx={state:'running',currentTime:10,resume(){return Promise.resolve();},createOscillator(){return node;},createGain(){return gain;},destination:{}};const p=new HitSoundPlayer({contextFactory:()=>ctx});p.unlock();p.tap(2);assert.equal(p.count,2);assert.equal(stopped,10.04);assert.equal(p.voices.size,1);node.onended();assert.equal(p.voices.size,0);});

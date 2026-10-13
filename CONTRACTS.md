@@ -1,0 +1,13 @@
+# Viewer implementation contracts
+All website code lives here. No uploads, no original resource edits, no profiles/game execution. Read ../README.md and ../docs/10-open-questions.md first.
+Dependency-free browser ES modules and Node local HTTP server. Renderer uses Canvas perspective projection (document any approximations), avoiding remote dependencies.
+## engine.js (timing agent owns engine.js and engine.test.js)
+Export parseChart(raw, id) => {id,title,artist,audioFilename,offset,timing,difficulties:[{id,name,rating,charter,notes,scrollSegments}],gimmicks}; normalize original numeric array schema. difficulty notes have {id,type,points:[{beat,left,right,leftEasing,rightEasing,width}],gimmickIndexes,direction,raw}. type numeric follows source (confirm).
+Export compileChart(chart,difficultyId) => {chart,difficulty,notes,duration,firstBpm,beatAt(time),timeAt(beat),positionAt(time,group=0),bpmAt(time),events}. Compiled notes include original normalized fields plus points with time and position, group,scrollMod,angle if known. Document evidence limitations. Deterministic arbitrary seek.
+## renderer.js (renderer agent owns renderer.js only)
+Export class PlayfieldRenderer with constructor(canvas), setChart(compiled), render(time,{scrollSpeed:1,overlays:true,selectedId:null}), pick(x,y) => note id|null, resize(). Reads engine contract above. scrollSpeed is user multiplier; derive game base speed 160/firstBpm internally. Canvas CSS sizing respected. Fetches the original track texture from the page-relative default `assets/texture-435.png` (pass textureUrl:null to disable).
+## audio.js (audio agent owns audio.js and audio-map.json and AUDIO.md)
+Export class PlaybackClock with getters time,playing,rate; async load(url|null,{offset=0}={}), play(),pause(),seek(seconds),setRate(rate),setVolume(volume),dispose(). Monotonic silent fallback. Define chart/audio offset convention explicitly. Browser local audio file mapping supported by parent UI.
+## Parent owns
+server.mjs, app.js,index.html,styles.css,package.json,README.md, smoke tests.
+API (local aliases; the page itself uses the static files) GET /api/library returns {charts:[{id,file,title,artist,audioFilename,offset,difficulties:[{id,name,rating,noteCount}],audioUrl:null|string}],audio:[{name,url}]}; GET /api/chart/{id} original JSON; /api/audio/{id} mapped audio; /api/texture track texture. Those aliases serve exactly the published static files: `library.json`, `charts/<id>.json` (public) and `assets/texture-435.png`. Audio mappings stay workspace-relative and are not published; `.soda` binaries, package.json, server.mjs and parent paths are never accessible. Server binds loopback only, whitelists resource paths. No static access to full workspace.
