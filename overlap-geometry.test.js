@@ -3,7 +3,7 @@
  * browser-check.mjs's real-canvas pixel comparison.
  *
  * Runs with the bundled Node test runner and no dependencies:
- *   node --test website_loader/overlap-geometry.test.js
+ *   node --test overlap-geometry.test.js
  *
  * Why this exists: the browser check compares real canvas pixels, so a fixture whose junction is
  * off the field, whose intervals do not overlap, or whose intermediate point was not actually the
