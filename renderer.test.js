@@ -13,7 +13,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { PlayfieldRenderer, SCROLL, CULL, TRACK, worldToCamera, cameraAxesFromQuaternion, CAMERA_ROTATION, makeMembership, windingNumber, segmentPolygonParams, segmentsIntersect, clipEdgeToBoundary, polygonBounds, ringSignedArea, ringIsSimple } from './renderer.js';
+import { PlayfieldRenderer, SCROLL, CULL, TRACK, worldToCamera, cameraAxesFromQuaternion, CAMERA_ROTATION, makeMembership, windingNumber, segmentPolygonParams, segmentsIntersect, clipEdgeToBoundary, polygonBounds, ringSignedArea, ringIsSimple, makeSlideEdgeGrid } from './renderer.js';
 
 // ---------------------------------------------------------------------------------------
 // Harness: a recording 2D context and a fake canvas, no DOM required
@@ -1620,4 +1620,142 @@ test('slide head is pickable and highlighted at its own depth, not the painter a
   const move = calls.find((c) => c.name === 'moveTo');
   assert.ok(Math.abs(move.args[0] - head[0].x) < 0.5 && Math.abs(move.args[1] - head[0].y) < 0.5,
     'highlight head ring starts at the drawn head');
+});
+
+test('slide edge grid matches the full scan for membership and stroked coverage', () => {
+  let seed = 7;
+  const rand = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  const entries = [];
+  for (let n = 0; n < 12; n++) {
+    const cx = rand() * 800 - 40, cy = rand() * 500 - 40, count = 6 + Math.floor(rand() * 40);
+    const poly = [];
+    for (let i = 0; i < count; i++) {
+      const angle = (i / count) * Math.PI * 2, radius = 20 + rand() * 120;
+      poly.push({ x: cx + Math.cos(angle) * radius * 1.8, y: cy + Math.sin(angle) * radius * 0.5 });
+    }
+    entries.push({ poly, bbox: polygonBounds(poly) });
+  }
+  const grid = makeSlideEdgeGrid(entries, 720, 420);
+  const linear = makeMembership(entries);
+  const gridded = makeMembership(entries, grid);
+  for (let i = 0; i < 4000; i++) {
+    const x = rand() * 900 - 90, y = rand() * 600 - 90;
+    assert.equal(gridded(x, y), linear(x, y), `membership at ${x},${y}`);
+  }
+  const merge = (pieces) => {
+    const out = [];
+    for (const p of pieces) {
+      const last = out[out.length - 1];
+      if (last && Math.abs(last.b.x - p.a.x) < 1e-9 && Math.abs(last.b.y - p.a.y) < 1e-9) last.b = p.b;
+      else out.push({ a: p.a, b: p.b });
+    }
+    return out;
+  };
+  for (const entry of entries) {
+    for (let k = 0; k < entry.poly.length; k++) {
+      const a = entry.poly[k], b = entry.poly[(k + 1) % entry.poly.length];
+      const full = clipEdgeToBoundary(a, b, entries, linear, 1e-3);
+      const fast = clipEdgeToBoundary(a, b, entries, gridded, 1e-3, grid);
+      assert.deepEqual(merge(fast), merge(full));
+    }
+  }
+});
+
+test('REGRESSION: taps on a long hold body stay above it while the hold tail is beyond the far cull', () => {
+  const { canvas } = makeCanvas();
+  const renderer = new PlayfieldRenderer(canvas, { textureUrl: null });
+  renderer.setChart(makeFixture({ notes: [
+    { id: 'hold', type: 1, beat: 20, lanes: [1, 6], extra: { beat: 60, lanes: [1, 6] } },
+    { id: 'tap', type: 0, beat: 21, lanes: [3, 4] },
+  ] }));
+  const hold = renderer.notes.find((n) => n.key === 'hold');
+  const tap = renderer.notes.find((n) => n.key === 'tap');
+  const speed = renderer.baseScrollSpeed(1) * 0.1;
+  const order = [];
+  const drawNote = renderer._drawNote.bind(renderer);
+  renderer._drawNote = (...args) => { order.push(args[1].key); return drawNote(...args); };
+  let flippedFrames = 0;
+  for (let t = hold.first.time - 1; t < tap.first.time; t += 0.02) {
+    const state = renderer.chart.positionAt(t, 0);
+    const holdZ = renderer._visibleAnchorZ(hold, state, speed);
+    const tapZ = renderer._visibleAnchorZ(tap, state, speed);
+    if (holdZ === null || tapZ === null) continue;
+    if (tapZ > holdZ) flippedFrames++;
+    order.length = 0;
+    renderer.render(t, { scrollSpeed: 0.1 });
+    assert.ok(order.indexOf('hold') < order.indexOf('tap'), `tap drawn above the hold body at t=${t.toFixed(2)}`);
+  }
+  assert.ok(flippedFrames > 0, 'fixture reaches frames where the tap is farther than the hold anchor');
+
+  // Clicking the tap selects it, not the hold body painted underneath.
+  renderer.render(9, { scrollSpeed: 0.1 });
+  const { stateAt } = renderer._frameState();
+  const z = renderer._visibleAnchorZ(tap, stateAt(0), speed);
+  const quad = renderer._tapQuad(tap.first, tap.pathAngle, z, 0);
+  const cx = quad.reduce((sum, p) => sum + p.x, 0) / 4;
+  const cy = quad.reduce((sum, p) => sum + p.y, 0) / 4;
+  assert.equal(renderer.pick(cx, cy), 'tap');
+});
+
+test('REGRESSION: hold caps lying on another hold body are painted above every hold body', () => {
+  const { canvas } = makeCanvas();
+  const renderer = new PlayfieldRenderer(canvas, { textureUrl: null });
+  renderer.setChart(makeFixture({ notes: [
+    { id: 'long', type: 1, beat: 20, lanes: [1, 6], extra: { beat: 60, lanes: [1, 6] } },
+    { id: 'short', type: 1, beat: 21, lanes: [3, 4], extra: { beat: 22, lanes: [3, 4] } },
+  ] }));
+  const long = renderer.notes.find((n) => n.key === 'long');
+  const short = renderer.notes.find((n) => n.key === 'short');
+  const speed = renderer.baseScrollSpeed(1) * 0.1;
+  const events = [];
+  const drawNote = renderer._drawNote.bind(renderer);
+  const drawCaps = renderer._drawSlideCaps.bind(renderer);
+  renderer._drawNote = (...args) => { events.push(`body:${args[1].key}`); return drawNote(...args); };
+  renderer._drawSlideCaps = (...args) => { events.push(`caps:${args[1].key}:${args[4]}`); return drawCaps(...args); };
+  let orderFlips = 0;
+  let lastLongFirst = null;
+  for (let t = long.first.time - 1; t < short.first.time; t += 0.02) {
+    const state = renderer.chart.positionAt(t, 0);
+    const longZ = renderer._visibleAnchorZ(long, state, speed);
+    const shortZ = renderer._visibleAnchorZ(short, state, speed);
+    if (longZ === null || shortZ === null) continue;
+    events.length = 0;
+    renderer.render(t, { scrollSpeed: 0.1 });
+    const longFirst = events.indexOf('body:long') < events.indexOf('body:short');
+    if (lastLongFirst !== null && longFirst !== lastLongFirst) orderFlips++;
+    lastLongFirst = longFirst;
+    const lastBody = Math.max(events.indexOf('body:long'), events.indexOf('body:short'));
+    const firstCaps = events.findIndex((e) => e.startsWith('caps:'));
+    assert.ok(firstCaps > lastBody, `every cap is painted above both bodies at t=${t.toFixed(2)}`);
+  }
+  assert.ok(orderFlips > 0, 'fixture reaches a frame where the body order between the holds flips');
+});
+
+test('REGRESSION: a faster-scrolling bullet stays above the tap it overtakes', () => {
+  const { canvas } = makeCanvas();
+  const renderer = new PlayfieldRenderer(canvas, { textureUrl: null });
+  const fixture = makeFixture({ notes: [
+    { id: 'tap', type: 0, beat: 24, lanes: [3, 3] },
+    { id: 'bullet', type: 2, beat: 22, lanes: [3, 3] },
+  ] });
+  fixture.notes.find((n) => n.id === 'bullet').scrollMod = 1.8;
+  renderer.setChart(fixture);
+  const tap = renderer.notes.find((n) => n.key === 'tap');
+  const bullet = renderer.notes.find((n) => n.key === 'bullet');
+  const speed = renderer.baseScrollSpeed(1) * 0.1;
+  const order = [];
+  const drawNote = renderer._drawNote.bind(renderer);
+  renderer._drawNote = (...args) => { order.push(args[1].key); return drawNote(...args); };
+  const seen = new Set();
+  for (let t = 0; t < bullet.first.time; t += 0.02) {
+    const state = renderer.chart.positionAt(t, 0);
+    const tapZ = renderer._visibleAnchorZ(tap, state, speed);
+    const bulletZ = renderer._visibleAnchorZ(bullet, state, speed);
+    if (tapZ === null || bulletZ === null) continue;
+    seen.add(bulletZ > tapZ ? 'behind' : 'ahead');
+    order.length = 0;
+    renderer.render(t, { scrollSpeed: 0.1 });
+    assert.ok(order.indexOf('tap') < order.indexOf('bullet'), `bullet drawn above the tap at t=${t.toFixed(2)}`);
+  }
+  assert.deepEqual([...seen].sort(), ['ahead', 'behind'], 'the bullet really overtakes the tap');
 });

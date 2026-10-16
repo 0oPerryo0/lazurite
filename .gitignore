@@ -24,6 +24,9 @@ coverage/
 .env
 .env.*
 .claude/
+.claude-work/
+CLAUDE.md
+CLAUDE.local.md
 
 # Editor and OS junk.
 .DS_Store

@@ -507,35 +507,37 @@ export function segmentPolygonParams(P0, P1, poly) {
   const len = Math.hypot(rx, ry);
   if (!(len > 0)) return [];
   const params = [];
-  const push = (t) => {
-    if (t > -1e-9 && t < 1 + 1e-9) params.push(clamp(t, 0, 1));
-  };
   for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
-    const ax = poly[j].x;
-    const ay = poly[j].y;
-    const bx = poly[i].x;
-    const by = poly[i].y;
-    const sx = bx - ax;
-    const sy = by - ay;
-    const den = rx * sy - ry * sx;
-    if (Math.abs(den) < 1e-12) {
-      // Parallel. Only collinear overlaps matter; parallel-but-offset has no crossing. The offset
-      // is a perpendicular distance in px, so the tolerance must be absolute, not relative to len.
-      if (Math.abs((ax - P0.x) * ry - (ay - P0.y) * rx) > 1e-6 * len) continue;
-      const useX = Math.abs(sx) >= Math.abs(sy);
-      const aT = ((useX ? ax - P0.x : ay - P0.y) / (useX ? rx : ry));
-      const bT = ((useX ? bx - P0.x : by - P0.y) / (useX ? rx : ry));
-      push(Math.min(aT, bT));
-      push(Math.max(aT, bT));
-      continue;
-    }
-    const ox = ax - P0.x;
-    const oy = ay - P0.y;
-    const t = (ox * sy - oy * sx) / den;
-    const u = (ox * ry - oy * rx) / den;
-    if (t > -1e-9 && t < 1 + 1e-9 && u > -1e-9 && u < 1 + 1e-9) push(t);
+    edgeParams(P0, rx, ry, len, poly[j].x, poly[j].y, poly[i].x, poly[i].y, params);
   }
   return params;
+}
+
+/** One polygon edge A->B of segmentPolygonParams: pushes 0, 1 or 2 clamped parameters. */
+function edgeParams(P0, rx, ry, len, ax, ay, bx, by, params) {
+  const sx = bx - ax;
+  const sy = by - ay;
+  const den = rx * sy - ry * sx;
+  if (Math.abs(den) < 1e-12) {
+    // Parallel. Only collinear overlaps matter; parallel-but-offset has no crossing. The offset
+    // is a perpendicular distance in px, so the tolerance must be absolute, not relative to len.
+    if (Math.abs((ax - P0.x) * ry - (ay - P0.y) * rx) > 1e-6 * len) return;
+    const useX = Math.abs(sx) >= Math.abs(sy);
+    const aT = ((useX ? ax - P0.x : ay - P0.y) / (useX ? rx : ry));
+    const bT = ((useX ? bx - P0.x : by - P0.y) / (useX ? rx : ry));
+    pushParam(params, Math.min(aT, bT));
+    pushParam(params, Math.max(aT, bT));
+    return;
+  }
+  const ox = ax - P0.x;
+  const oy = ay - P0.y;
+  const t = (ox * sy - oy * sx) / den;
+  const u = (ox * ry - oy * rx) / den;
+  if (t > -1e-9 && t < 1 + 1e-9 && u > -1e-9 && u < 1 + 1e-9) pushParam(params, t);
+}
+
+function pushParam(params, t) {
+  if (t > -1e-9 && t < 1 + 1e-9) params.push(clamp(t, 0, 1));
 }
 
 /**
@@ -550,18 +552,20 @@ export function segmentPolygonParams(P0, P1, poly) {
 export function windingNumber(x, y, poly) {
   let winding = 0;
   for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
-    const xi = poly[i].x;
-    const yi = poly[i].y;
-    const xj = poly[j].x;
-    const yj = poly[j].y;
-    const upward = yj <= y && yi > y;
-    const downward = yi <= y && yj > y;
-    if (!upward && !downward) continue;
-    const side = (xj - xi) * (y - yi) - (x - xi) * (yj - yi);
-    if (upward && side > 0) winding += 1;
-    else if (downward && side < 0) winding -= 1;
+    winding += edgeWinding(x, y, poly[i].x, poly[i].y, poly[j].x, poly[j].y);
   }
   return winding;
+}
+
+/** One edge J->I of windingNumber: +1, -1 or 0. Only edges straddling `y` left of `x` count. */
+function edgeWinding(x, y, xi, yi, xj, yj) {
+  const upward = yj <= y && yi > y;
+  const downward = yi <= y && yj > y;
+  if (!upward && !downward) return 0;
+  const side = (xj - xi) * (y - yi) - (x - xi) * (yj - yi);
+  if (upward && side > 0) return 1;
+  if (downward && side < 0) return -1;
+  return 0;
 }
 
 /**
@@ -717,7 +721,8 @@ export function ringIsSimple(poly, eps = 1e-6) {
  * so sideA === sideB and the seam is dropped. Excluding the ring's own polygon would make the
  * outward probe fall outside everything and wrongly KEEP that internal seam.
  */
-export function makeMembership(polys) {
+export function makeMembership(polys, grid) {
+  if (grid) return (x, y) => grid.contains(x, y);
   return (x, y) => {
     for (let i = 0; i < polys.length; i++) {
       const entry = polys[i];
@@ -726,6 +731,131 @@ export function makeMembership(polys) {
       if (windingNumber(x, y, entry.poly) !== 0) return true;
     }
     return false;
+  };
+}
+
+/**
+ * Uniform screen grid over the EDGES of the frame's slide polygons: the broad phase for the
+ * combined slide outline.
+ *
+ * Both exact tests are sums over independent polygon edges, so an edge that cannot touch the query
+ * is skipped without changing the result:
+ *   - `segmentParams` only gathers edges whose cells overlap the segment's box grown by `margin`.
+ *     An edge yields a cut only where it meets the segment (to ~1e-9 of its length), so a skipped
+ *     edge, whose box is at least `margin` away, contributes nothing.
+ *   - `contains` only gathers edges in the point's row up to `x + margin`. An edge adds winding
+ *     only when it straddles `y` and crosses that row to the left of `x` (see edgeWinding's sign).
+ * The per-edge arithmetic is the shared `edgeParams`/`edgeWinding` kernel, and cut parameters are
+ * sorted afterwards, so results equal the linear scan. One known exception: an edge almost exactly
+ * collinear with the segment but beyond its end can make the full scan's t/u division return a
+ * spurious in-range cut (catastrophic cancellation). The grid never visits such an edge, so that
+ * piece is not split in two; the stroked line is the same. Cell indices are clamped (far off-canvas
+ * geometry lands in border cells and queries clamp the same way); edges with non-finite
+ * coordinates are visited by every query.
+ */
+export function makeSlideEdgeGrid(entries, width, height, cellWidth = 8, cellHeight = 2, margin = 0.5) {
+  // Rows are thin: slide geometry bunches up near the horizon, and a membership probe only needs
+  // the edges that straddle its own y.
+  const cols = Math.max(1, Math.ceil((Number(width) || 1) / cellWidth));
+  const rows = Math.max(1, Math.ceil((Number(height) || 1) / cellHeight));
+  // Cells are created on first use: most of a frame's grid is empty. `rowEdges` lists every edge
+  // whose y-range covers a row, which is all a membership probe needs.
+  const cells = new Array(cols * rows).fill(null);
+  const rowEdges = new Array(rows).fill(null);
+  const always = [];
+  const col = (x) => Math.min(cols - 1, Math.max(0, Math.floor(x / cellWidth)));
+  const row = (y) => Math.min(rows - 1, Math.max(0, Math.floor(y / cellHeight)));
+  // Edge k of entry e is stored as one record; `mark` dedups an edge spanning several cells.
+  const edges = [];
+  for (let e = 0; e < entries.length; e++) {
+    const poly = entries[e].poly;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      const rec = { entry: entries[e], slot: e, ax: poly[j].x, ay: poly[j].y, bx: poly[i].x, by: poly[i].y, minX: Math.min(poly[j].x, poly[i].x), mark: 0 };
+      edges.push(rec);
+      if (!(Number.isFinite(rec.ax) && Number.isFinite(rec.ay) && Number.isFinite(rec.bx) && Number.isFinite(rec.by))) {
+        always.push(rec);
+        continue;
+      }
+      const c1 = col(Math.max(rec.ax, rec.bx));
+      const r1 = row(Math.max(rec.ay, rec.by));
+      for (let r = row(Math.min(rec.ay, rec.by)); r <= r1; r++) {
+        (rowEdges[r] || (rowEdges[r] = [])).push(rec);
+        for (let c = col(Math.min(rec.ax, rec.bx)); c <= c1; c++) {
+          const idx = r * cols + c;
+          (cells[idx] || (cells[idx] = [])).push(rec);
+        }
+      }
+    }
+  }
+  let stamp = 0;
+  const winding = new Float64Array(entries.length);
+  const touched = [];
+  const gather = (c0, c1, r0, r1, visit) => {
+    stamp++;
+    for (let k = 0; k < always.length; k++) { always[k].mark = stamp; visit(always[k]); }
+    for (let r = r0; r <= r1; r++) {
+      for (let c = c0; c <= c1; c++) {
+        const cell = cells[r * cols + c];
+        if (!cell) continue;
+        for (let k = 0; k < cell.length; k++) {
+          const rec = cell[k];
+          if (rec.mark === stamp) continue;
+          rec.mark = stamp;
+          visit(rec);
+        }
+      }
+    }
+  };
+  return {
+    /** Push the cut parameters of every accepted polygon onto `params` (unsorted). */
+    segmentParams(P0, P1, accept, params) {
+      const rx = P1.x - P0.x;
+      const ry = P1.y - P0.y;
+      const len = Math.hypot(rx, ry);
+      if (!(len > 0)) return;
+      const x0 = Math.min(P0.x, P1.x) - margin;
+      const x1 = Math.max(P0.x, P1.x) + margin;
+      const y0 = Math.min(P0.y, P1.y) - margin;
+      const y1 = Math.max(P0.y, P1.y) + margin;
+      const visit = (rec) => {
+        if (accept(rec.entry)) edgeParams(P0, rx, ry, len, rec.ax, rec.ay, rec.bx, rec.by, params);
+      };
+      if (!(Number.isFinite(x0) && Number.isFinite(x1) && Number.isFinite(y0) && Number.isFinite(y1))) {
+        stamp++;
+        for (let k = 0; k < edges.length; k++) visit(edges[k]);
+        return;
+      }
+      gather(col(x0), col(x1), row(y0), row(y1), visit);
+    },
+    /** True when (x, y) has nonzero winding in any polygon whose bbox contains it. */
+    contains(x, y) {
+      touched.length = 0;
+      const visit = (rec) => {
+        const b = rec.entry.bbox;
+        if (x < b.x0 || x > b.x1 || y < b.y0 || y > b.y1) return;
+        const w = edgeWinding(x, y, rec.bx, rec.by, rec.ax, rec.ay);
+        if (!w) return;
+        if (winding[rec.slot] === 0) touched.push(rec.slot);
+        winding[rec.slot] += w;
+      };
+      if (!(Number.isFinite(x) && Number.isFinite(y))) {
+        stamp++;
+        for (let k = 0; k < edges.length; k++) visit(edges[k]);
+      } else {
+        for (let k = 0; k < always.length; k++) visit(always[k]);
+        const list = rowEdges[row(y)];
+        if (list) {
+          const limit = x + margin;
+          for (let k = 0; k < list.length; k++) if (list[k].minX <= limit) visit(list[k]);
+        }
+      }
+      let inside = false;
+      for (let k = 0; k < touched.length; k++) {
+        if (winding[touched[k]] !== 0) inside = true;
+        winding[touched[k]] = 0;
+      }
+      return inside;
+    },
   };
 }
 
@@ -749,7 +879,7 @@ export function makeMembership(polys) {
  * @param {Function} membership (x, y) -> boolean "inside the union"
  * @param {number} eps probe distance in CSS pixels
  */
-export function clipEdgeToBoundary(P0, P1, clipPolys, membership, eps) {
+export function clipEdgeToBoundary(P0, P1, clipPolys, membership, eps, grid) {
   if (!clipPolys.length) return [{ a: P0, b: P1 }];
   const rx = P1.x - P0.x;
   const ry = P1.y - P0.y;
@@ -764,12 +894,19 @@ export function clipEdgeToBoundary(P0, P1, clipPolys, membership, eps) {
   const segY0 = Math.min(P0.y, P1.y) - eps;
   const segY1 = Math.max(P0.y, P1.y) + eps;
   const params = [0, 1];
-  for (let i = 0; i < clipPolys.length; i++) {
-    const entry = clipPolys[i];
+  const accept = (entry) => {
     const b = entry.bbox;
-    if (b && (b.x1 < segX0 || b.x0 > segX1 || b.y1 < segY0 || b.y0 > segY1)) continue;
-    const piece = segmentPolygonParams(P0, P1, entry.poly);
-    for (let k = 0; k < piece.length; k++) params.push(piece[k]);
+    return !(b && (b.x1 < segX0 || b.x0 > segX1 || b.y1 < segY0 || b.y0 > segY1));
+  };
+  if (grid) {
+    grid.segmentParams(P0, P1, accept, params);
+  } else {
+    for (let i = 0; i < clipPolys.length; i++) {
+      const entry = clipPolys[i];
+      if (!accept(entry)) continue;
+      const piece = segmentPolygonParams(P0, P1, entry.poly);
+      for (let k = 0; k < piece.length; k++) params.push(piece[k]);
+    }
   }
   params.sort((a, b) => a - b);
   const cuts = [];
@@ -799,6 +936,39 @@ export function clipEdgeToBoundary(P0, P1, clipPolys, membership, eps) {
 }
 
 /** Eased hitbox between two segment points. The two edges ease independently. */
+/**
+ * Painter order for the note pass: flat bodies (slides, voids), then flat notes (taps, dashes),
+ * then bullets; far first within each layer.
+ *
+ * A slide/void sorts by its largest VISIBLE point Z. While a long hold's tail is still beyond the
+ * far cull that anchor can be its head, so a tap sitting on the body further up the track sorted
+ * as "farther", was drawn first and vanished under the body until the tail came into view. Both
+ * lie on the track surface, so the body must never cover a tap: layer before depth.
+ */
+function paintLayer(note) {
+  if (note.kind === 1 || note.kind === 3) return 0;
+  // Bullets float above the track (render queue 2000 vs 52 for taps), so a flat note never covers
+  // one. Depth-sorting them with taps flipped the order each time a faster-scrolling bullet
+  // overtook a tap, and the bullet popped under it.
+  return note.kind === 2 ? 2 : 1;
+}
+
+/**
+ * Depth key for sorting. Notes at the same instant must tie exactly, but their Z values can differ
+ * in the last bits from frame to frame (rounding in position - state), which flipped the tie-break
+ * and made equal-time neighbours swap. Rounding to ~9 significant digits absorbs that noise; it is
+ * RELATIVE so genuinely different depths near the judgement line (z ~ 1e-10) still order correctly.
+ */
+function depthKey(z) {
+  if (!z || !Number.isFinite(z)) return z || 0;
+  const step = 2 ** (Math.floor(Math.log2(Math.abs(z))) - 30);
+  return Math.round(z / step) * step;
+}
+
+function paintOrder(a, b) {
+  return paintLayer(a.n) - paintLayer(b.n) || depthKey(b.z) - depthKey(a.z) || a.n.queue - b.n.queue || (a.n.order ?? 0) - (b.n.order ?? 0);
+}
+
 function hitboxAt(a, b, t, easeLeft, easeRight) {
   const left = lerp(a.left, b.left, clamp(easeLeft(t), -8, 8));
   const right = lerp(a.right, b.right, clamp(easeRight(t), -8, 8));
@@ -1031,6 +1201,8 @@ function normalizeNote(raw, index, ctx) {
   return {
     id: raw.id ?? raw.noteId ?? `note-${index}`,
     key: String(raw.id ?? raw.noteId ?? `note-${index}`),
+    /** Position in the compiled note list: a stable tie-breaker for paint order. */
+    order: index,
     kind,
     kindName: KIND_NAMES[kind] || 'tap',
     group: Number(raw.group) || 0,
@@ -1105,8 +1277,10 @@ export class PlayfieldRenderer {
       hover: this.palette.mint,
       tap: { fill: '#f3f0e6', edge: '#9ee6cf' },
       tapPast: { fill: '#7f8b89', edge: '#5d6a68' },
-      slide: { fill: '#cfe9df', edge: '#8fd8c0' },
-      slideTap: { fill: '#ffffff', edge: '#8fd8c0' },
+      // Hold body is a deeper mint so taps and the ivory head read above it; caps keep the accent.
+      slide: { fill: '#3f8a77', edge: '#9ee6cf' },
+      slideTap: { fill: '#f3f0e6', edge: '#9ee6cf' },
+      slideTail: { fill: '#9ee6cf', edge: '#9ee6cf' },
       bullet: { fill: '#ffcf8f', edge: '#ffe6c2', dark: '#e2a75f' },
       dash: { fill: '#9ee6cf', edge: '#eeeade' },
     };
@@ -1551,7 +1725,7 @@ export class PlayfieldRenderer {
       if (z === null) continue;
       visible.push({ n, z });
     }
-    visible.sort((a, b) => b.z - a.z || a.n.queue - b.n.queue);
+    visible.sort(paintOrder);
 
     // Combined slide outline: one prepass caches the projected body polygons of every visible
     // slide so an edge can be tested against the union of all of them (see _drawSlideOutline).
@@ -1562,12 +1736,35 @@ export class PlayfieldRenderer {
     const cleanSlides = options.showOverlappingSlides !== true;
     this._prepareSlideFrame(visible, stateAt, speed, cleanSlides);
 
-    for (let i = 0; i < visible.length; i++) {
-      const { n, z } = visible[i];
-      // Voids were already drawn in their fixed underlay pass; selection remains an overlay.
-      if (n.kind !== 3) this._drawNote(ctx, n, z, stateAt, speed, t, cleanSlides);
+    const highlight = (n, z) => {
       if (selectedId !== null && selectedId === n.key) this._drawHighlight(ctx, n, z, stateAt, speed, true);
       else if (hoverId !== null && hoverId === n.key) this._drawHighlight(ctx, n, z, stateAt, speed, false);
+    };
+    // Flat layer (paintOrder puts it first): slide bodies, then every slide cap above all bodies,
+    // then the overlays of this layer. Voids were already drawn in their fixed underlay pass.
+    let flat = 0;
+    while (flat < visible.length && paintLayer(visible[flat].n) === 0) flat++;
+    for (let i = 0; i < flat; i++) {
+      const { n, z } = visible[i];
+      if (n.kind !== 3) this._drawNote(ctx, n, z, stateAt, speed, t, cleanSlides, 'body');
+    }
+    const capDepth = (n, point) => this._zOf(point, stateAt(n.group), speed, n.scrollMod);
+    for (const which of ['tail', 'head']) {
+      const caps = [];
+      for (let i = 0; i < flat; i++) {
+        const n = visible[i].n;
+        if (n.kind !== 1 || (which === 'tail' && n.points.length < 2)) continue;
+        const z = capDepth(n, which === 'head' ? n.first : n.last);
+        if (z !== null) caps.push({ n, z });
+      }
+      caps.sort((a, b) => depthKey(b.z) - depthKey(a.z) || a.n.order - b.n.order);
+      for (const cap of caps) this._drawSlideCaps(ctx, cap.n, stateAt, speed, which);
+    }
+    for (let i = 0; i < flat; i++) highlight(visible[i].n, visible[i].z);
+    for (let i = flat; i < visible.length; i++) {
+      const { n, z } = visible[i];
+      this._drawNote(ctx, n, z, stateAt, speed, t, cleanSlides);
+      highlight(n, z);
     }
 
     this._slideFrame = null;
@@ -2008,11 +2205,11 @@ export class PlayfieldRenderer {
    * @param {Function} stateAt (group) -> visual position of the judgement plane for that group
    * @param {boolean} [cleanSlides] combined-outline mode for slides (see _drawSlide)
    */
-  _drawNote(ctx, note, z, stateAt, speed, t, cleanSlides) {
+  _drawNote(ctx, note, z, stateAt, speed, t, cleanSlides, part) {
     const statePosition = stateAt(note.group);
     switch (note.kind) {
       case 1:
-        this._drawSlide(ctx, note, z, stateAt, speed, cleanSlides);
+        this._drawSlide(ctx, note, z, stateAt, speed, cleanSlides, part);
         break;
       case 2:
         this._drawBullet(ctx, note, z);
@@ -2163,7 +2360,7 @@ export class PlayfieldRenderer {
       byNote.set(n, geometry);
       for (let k = 0; k < geometry.polys.length; k++) polys.push(geometry.polys[k]);
     }
-    this._slideFrame = { polys, byNote };
+    this._slideFrame = { polys, byNote, grid: makeSlideEdgeGrid(polys, this.cssWidth, this.cssHeight) };
   }
 
   /**
@@ -2274,7 +2471,12 @@ export class PlayfieldRenderer {
    * @param {boolean} [cleanOutline] override for the option (render() passes its own value);
    *        omitted -> this.lastOptions, where only an explicit `true` selects the legacy outline
    */
-  _drawSlide(ctx, note, z, stateAt, speed, cleanOutline) {
+  _drawSlide(ctx, note, z, stateAt, speed, cleanOutline, part = 'all') {
+    if (part === 'caps') {
+      this._drawSlideCaps(ctx, note, stateAt, speed);
+      return;
+    }
+    const caps = part !== 'body';
     const points = note.points;
     const first = points[0];
     const statePosition = stateAt(note.group);
@@ -2293,7 +2495,9 @@ export class PlayfieldRenderer {
     // `geometry.rings` is already the whole candidate set (body intervals plus this note's tap
     // quads), so a head-only slide still strokes its tap boundary.
     const rings = geometry ? geometry.rings : [];
-    if (!geometry) {
+    if (!caps) {
+      // Caps are painted later by _drawSlideCaps, above every slide body.
+    } else if (!geometry) {
       // Legacy per-object outline (or no cached frame): the head tap is filled AND stroked.
       if (zHead !== null && this._visible(zHead)) {
         this._fillQuad(ctx, this._tapQuad(first, note.pathAngle, zHead, 0), this.color.slideTap.fill, this.color.slideTap.edge, 1.25);
@@ -2363,20 +2567,49 @@ export class PlayfieldRenderer {
     }
 
     // Tail tap for the final point (fill only in clean mode).
-    if (points.length > 1 && !geometry) {
+    if (!caps) {
+      // See above: painted by _drawSlideCaps.
+    } else if (points.length > 1 && !geometry) {
       const last = points[points.length - 1];
       const zLast = this._zOf(last, statePosition, speed, note.scrollMod);
       if (zLast !== null && this._visible(zLast)) {
-        this._fillQuad(ctx, this._tapQuad(last, note.pathAngle, zLast, 0), this.color.slide.fill, this.color.slide.edge, 1.25);
+        this._fillQuad(ctx, this._tapQuad(last, note.pathAngle, zLast, 0), this.color.slideTail.fill, this.color.slideTail.edge, 1.25);
       }
     } else if (geometry && geometry.tailQuad) {
-      this._fillQuad(ctx, geometry.tailQuad, this.color.slide.fill, null, 1);
+      this._fillQuad(ctx, geometry.tailQuad, this.color.slideTail.fill, null, 1);
     }
 
     // One stroke pass for the whole note, after all of its fills.
     if (geometry && rings.length) {
       const clip = this._slideOutlineClip(note, geometry);
       this._drawSlideOutline(ctx, rings, clip);
+    }
+  }
+
+  /**
+   * Head and tail caps of one slide, filled and outlined at their own depths.
+   *
+   * render() paints these after EVERY slide body. A cap sits on the track surface like a tap, so
+   * another slide's body must never cover it; sorting whole slides by their anchor flipped that
+   * order whenever an anchor jumped, and caps lying on a long hold blinked in and out. render()
+   * also paints all tails before all heads, each sorted by its OWN depth, so a head sitting on the
+   * previous hold's tail never swaps places with it.
+   *
+   * @param {'both'|'head'|'tail'} [which]
+   */
+  _drawSlideCaps(ctx, note, stateAt, speed, which = 'both') {
+    const points = note.points;
+    const statePosition = stateAt(note.group);
+    const zHead = this._zOf(points[0], statePosition, speed, note.scrollMod);
+    if (which !== 'tail' && zHead !== null && this._visible(zHead)) {
+      this._fillQuad(ctx, this._tapQuad(points[0], note.pathAngle, zHead, 0), this.color.slideTap.fill, this.color.slideTap.edge, 1.25);
+    }
+    if (which !== 'head' && points.length > 1) {
+      const last = points[points.length - 1];
+      const zLast = this._zOf(last, statePosition, speed, note.scrollMod);
+      if (zLast !== null && this._visible(zLast)) {
+        this._fillQuad(ctx, this._tapQuad(last, note.pathAngle, zLast, 0), this.color.slideTail.fill, this.color.slideTail.edge, 1.25);
+      }
     }
   }
 
@@ -2400,8 +2633,9 @@ export class PlayfieldRenderer {
     // Probe distance: a hairline relative to the canvas, so the side test resolves boundaries of
     // ordinary width while never bridging a polygon thinner than a pixel.
     const eps = Math.max(1e-6, 1e-6 * (this.cssWidth || 0));
-    const membership = makeMembership(clipPolys);
-    return { clipPolys, membership, eps };
+    const grid = frame.grid || null;
+    const membership = makeMembership(clipPolys, grid);
+    return { clipPolys, membership, eps, grid };
   }
 
   /**
@@ -2434,7 +2668,10 @@ export class PlayfieldRenderer {
     if (!clip) return;
     ctx.beginPath();
     let drew = false;
-    const seen = [];
+    // Pieces already painted, bucketed by a.x at 1e-5 px (wider than the 1e-6 match tolerance), so
+    // a match can only sit in the same or a neighbouring bucket. Same answer as a full scan.
+    const seen = new Map();
+    const bucketOf = (x) => Math.floor(x * 1e5);
     for (let i = 0; i < edges.length; i++) {
       const entry = edges[i];
       const ring = entry && entry.poly ? entry.poly : entry;
@@ -2447,24 +2684,32 @@ export class PlayfieldRenderer {
         const b = ring[(k + 1) % ring.length];
         if (!a || !b) continue;
         if (!(Number.isFinite(a.x) && Number.isFinite(a.y) && Number.isFinite(b.x) && Number.isFinite(b.y))) continue;
-        const pieces = clipEdgeToBoundary(a, b, clip.clipPolys, membership, clip.eps);
+        const pieces = clipEdgeToBoundary(a, b, clip.clipPolys, membership, clip.eps, clip.grid);
         for (let j = 0; j < pieces.length; j++) {
           const piece = pieces[j];
           // Coincident pieces (a shared cap between two intervals, a duplicated edge) are painted
           // once. The first occurrence in this batch is kept, and since the batch follows the
           // painter order (far to near) that first occurrence is the earlier-drawn object.
           let duplicate = false;
-          for (let s = 0; s < seen.length; s++) {
-            const other = seen[s];
-            if (
-              Math.abs(other.a.x - piece.a.x) < 1e-6 &&
-              Math.abs(other.a.y - piece.a.y) < 1e-6 &&
-              Math.abs(other.b.x - piece.b.x) < 1e-6 &&
-              Math.abs(other.b.y - piece.b.y) < 1e-6
-            ) { duplicate = true; break; }
+          const key = bucketOf(piece.a.x);
+          for (let d = -1; d <= 1 && !duplicate; d++) {
+            const bucket = seen.get(key + d);
+            if (!bucket) continue;
+            for (let s = 0; s < bucket.length; s++) {
+              const other = bucket[s];
+              if (
+                Math.abs(other.a.x - piece.a.x) < 1e-6 &&
+                Math.abs(other.a.y - piece.a.y) < 1e-6 &&
+                Math.abs(other.b.x - piece.b.x) < 1e-6 &&
+                Math.abs(other.b.y - piece.b.y) < 1e-6
+              ) { duplicate = true; break; }
+            }
           }
           if (duplicate) continue;
-          seen.push(piece);
+          if (Number.isFinite(key)) {
+            if (!seen.has(key)) seen.set(key, []);
+            seen.get(key).push(piece);
+          }
           ctx.moveTo(piece.a.x, piece.a.y);
           ctx.lineTo(piece.b.x, piece.b.y);
           drew = true;
@@ -2965,21 +3210,19 @@ export class PlayfieldRenderer {
     const py = Number(y);
     if (!Number.isFinite(px) || !Number.isFinite(py)) return null;
 
+    // The topmost hit wins: the one render() paints last (see paintOrder).
     let best = null;
-    let bestZ = -Infinity;
     for (let i = 0; i < this.notes.length; i++) {
       const n = this.notes[i];
       if (n.kind === 5) continue;
       const z = this._visibleAnchorZ(n, stateAt(n.group), speed);
       if (z === null) continue;
       if (!this._noteSilhouette(n, z, stateAt, speed).some((poly) => pointInPolygon(px, py, poly))) continue;
-      if (z > bestZ) {
-        bestZ = z;
-        best = n.key;
-      }
+      const hit = { n, z };
+      if (!best || paintOrder(best, hit) < 0) best = hit;
     }
-    this.lastPick = best;
-    return best;
+    this.lastPick = best ? best.n.key : null;
+    return this.lastPick;
   }
 
   /** Convenience: pick straight from a pointer/mouse event on the canvas. */
