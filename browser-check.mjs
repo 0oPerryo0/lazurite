@@ -66,7 +66,6 @@ const checkboxId='show-overlapping-slides';
 const checkboxValue=async()=>evaluate("document.getElementById("+JSON.stringify(checkboxId)+").checked");
 await search('');await evaluate('window.scrollTo(0,0)');await waitFor(visible('#settings-link'),'catalog settings link');
 assert.equal(await isVisible('#settings-link'),true);
-assert.equal(await isVisible('#settings-link-viewer'),false,'the catalog must not expose the viewer settings link');
 await evaluate("document.querySelector('#settings-link').click()");
 await waitFor(visible('#settings-view'),'settings screen from catalog');
 assert.equal(await evaluate('location.hash'),'#settings');
@@ -138,8 +137,8 @@ assert.equal(await evaluate("document.querySelector('#play').getAttribute('aria-
 // CASE 1 — Settings entered while the chart is PLAYING: the visit itself must stop the music, and
 // the return must never auto-resume it, even though the parked session was playing.
 const primed=await evaluate("({time:document.querySelector('#time').textContent,seek:document.querySelector('#seek').value,rate:document.querySelector('#rate').value,music:document.querySelector('#music-volume').value,hits:document.querySelector('#hit-volume').value,scroll:document.querySelector('#scroll').value})");
-await waitFor(visible('#settings-link-viewer'),'viewer settings link');
-await evaluate("document.querySelector('#settings-link-viewer').click()");
+await waitFor(visible('#settings-link'),'masthead settings link in the viewer');
+await evaluate("document.querySelector('#settings-link').click()");
 await waitFor(visible('#settings-view'),'settings screen from viewer');
 const clockAtOpen=await evaluate("(()=>{const m=window.__media[0];return {printed:document.querySelector('#time').textContent,seek:Number(document.querySelector('#seek').value),mediaTime:m?Math.round(m.currentTime*1000)/1000:null,mediaPaused:m?m.paused:null};})()");
 assert.equal(await evaluate('location.hash'),'#settings');
@@ -194,7 +193,7 @@ assert.equal(await evaluate("document.querySelector('#scroll').value"),primed.sc
 assert.equal(await checkboxValue(),true,'the preference must round-trip through the viewer settings visit');
 // CASE 2 — Settings entered from an ALREADY PAUSED chart: the exact parked time must be captured
 // and restored bit-for-bit (no tolerance needed), and the preference must come back unchecked.
-const seekParkExact=await evaluate(`(async()=>{document.querySelector('#seek').value='15';document.querySelector('#seek').dispatchEvent(new Event('input'));await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));document.querySelector('#settings-link-viewer').click();await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));return {seek:Number(document.querySelector('#seek').value),printed:document.querySelector('#time').textContent,viewerHidden:document.querySelector('#viewer-view').hidden};})()`);
+const seekParkExact=await evaluate(`(async()=>{document.querySelector('#seek').value='15';document.querySelector('#seek').dispatchEvent(new Event('input'));await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));document.querySelector('#settings-link').click();await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));return {seek:Number(document.querySelector('#seek').value),printed:document.querySelector('#time').textContent,viewerHidden:document.querySelector('#viewer-view').hidden};})()`);
 assert.equal(seekParkExact.viewerHidden,true,'the settings screen must be open for the exact-time park');
 assert.ok(Math.abs(seekParkExact.seek-15)<1e-6,'the paused park must sit at the 15s seek, got '+seekParkExact.seek);
 await evaluate("document.querySelector('#settings-back').click()");
@@ -227,7 +226,7 @@ const pendingBefore=await evaluate("({title:document.querySelector('#title').tex
 assert.equal(pendingBefore.title,luxe.title,'the loading viewer must carry the song title');
 assert.equal(pendingBefore.noteCount,'—','a held chart must not have a note count yet');
 assert.equal(pendingBefore.playDisabled,true,'a held chart must keep Play disabled');
-await evaluate("document.querySelector('#settings-link-viewer').click()");
+await evaluate("document.querySelector('#settings-link').click()");
 await waitFor(visible('#settings-view'),'settings over a pending chart');
 const pendingDuringSettings=await evaluate("({count:window.__fetchCount,title:document.title,heading:document.querySelector('#settings-title').textContent,playDisabled:document.querySelector('#play').disabled})");
 assert.equal(pendingDuringSettings.count,1,'opening Settings must not re-request the pending chart');

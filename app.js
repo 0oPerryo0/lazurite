@@ -160,7 +160,7 @@ export async function startApp(){
     const viewerSession=viewerActive&&activeRoute?activeRoute:null;
     settingsReturn=viewerSession||'#songs';
     settingsSession=viewerSession?{route:viewerSession,time:clock.time,song:current}:null;
-    const settingsFallback=viewerSession?$('settings-link-viewer'):$('settings-link');
+    const settingsFallback=$('settings-link');
     const active=document.activeElement;
     lastSettingsLink=event?.currentTarget||(active?.matches?.('a[href="#settings"]')?active:settingsFallback);
     if(!viewerSession){     // catalog origin: remember where the catalog was for the return trip
@@ -300,7 +300,7 @@ export async function startApp(){
   // to this browser only (no upload, no account) and a malformed stored value reads as unchecked.
   showSettingsControls();
   $('show-overlapping-slides').addEventListener('change',()=>writeShowOverlappingSlides(undefined,$('show-overlapping-slides').checked));
-  for(const id of ['settings-link','settings-link-viewer'])$(id).addEventListener('click',event=>{if(event.button!==0||event.altKey||event.ctrlKey||event.metaKey||event.shiftKey)return;event.preventDefault();openSettings(event);});
+  $('settings-link').addEventListener('click',event=>{if(event.button!==0||event.altKey||event.ctrlKey||event.metaKey||event.shiftKey)return;event.preventDefault();openSettings(event);});
   $('settings-back').addEventListener('click',()=>closeSettings());
   function frame(){
     if(!viewerActive){requestAnimationFrame(frame);return;}
