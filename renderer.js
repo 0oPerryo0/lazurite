@@ -2865,7 +2865,6 @@ export class PlayfieldRenderer {
 
   _drawHighlight(ctx, note, z, stateAt, speed, selected) {
     const color = selected ? this.color.selection : this.color.hover;
-    const statePosition = stateAt(note.group);
     ctx.save();
     ctx.lineWidth = selected ? 2.5 : 1.5;
     ctx.strokeStyle = rgba(color, selected ? 0.95 : 0.6);
@@ -2873,16 +2872,8 @@ export class PlayfieldRenderer {
       ctx.shadowColor = rgba(color, 0.8);
       ctx.shadowBlur = 12;
     }
-
-    if (note.kind === 1 || note.kind === 3) {
-      // Outline the head plus the full body span so a selected object reads as one shape.
-      this._strokeQuad(ctx, this._tapQuad(note.first, note.pathAngle, z, 0.001));
-      const zLast = this._zOf(note.last, statePosition, speed, note.scrollMod);
-      const quad = this._bodyQuad(note, note.first, note.last, z, zLast, note.kind === 3);
-      this._strokeQuad(ctx, quad);
-    } else {
-      this._strokeQuad(ctx, this._tapQuad(note.first, note.pathAngle, z, 0.001));
-    }
+    // Outline exactly what was drawn: head/tail taps at their own depths plus every body interval.
+    for (const poly of this._noteSilhouette(note, z, stateAt, speed)) this._strokeQuad(ctx, poly);
     ctx.restore();
   }
 
@@ -2895,24 +2886,45 @@ export class PlayfieldRenderer {
     ctx.stroke();
   }
 
-  _bodyQuad(note, a, b, zA, zB, isVoid = false) {
-    if (zA === null || zB === null) return null;
-    // Match the rendered body edges, minus a hairline so the outline sits just inside.
-    const pad = isVoid ? 0 : 0.1;
-    const l = a.left + pad + 0.02;
-    const r = b.right - pad - 0.02;
-    const y = JUDGEMENT.tapSurfaceY + 0.001;
-    const [lx0, lz0] = note.pathAngle(l * LANES.toWorld, zA);
-    const [lx1, lz1] = note.pathAngle(r * LANES.toWorld, zA);
-    const [lx2, lz2] = note.pathAngle(r * LANES.toWorld, zB);
-    const [lx3, lz3] = note.pathAngle(l * LANES.toWorld, zB);
-    const quad = [
-      this.project(lx0, y, lz0),
-      this.project(lx1, y, lz1),
-      this.project(lx2, y, lz2),
-      this.project(lx3, y, lz3),
-    ];
-    return quad.some((q) => !q) ? null : quad;
+  /**
+   * Screen polygons covering a note as drawn, shared by highlight and picking.
+   *
+   * `z` is the painter's anchor. Single notes are drawn there, but a slide/void anchor is the
+   * largest visible point Z, so the head and every interval use their OWN depths (as _drawSlide
+   * and _drawVoid do). Each polygon is kept separate: concatenating rings into one polygon makes
+   * it self-intersecting and breaks the point-in-polygon test.
+   */
+  _noteSilhouette(note, z, stateAt, speed) {
+    if (note.kind !== 1 && note.kind !== 3) {
+      const quad = this._tapQuad(note.first, note.pathAngle, z, 0.001);
+      return quad ? [quad] : [];
+    }
+    const isVoid = note.kind === 3;
+    const statePosition = stateAt(note.group);
+    const points = note.points;
+    const polys = [];
+    for (let i = 0; i + 1 < points.length; i++) {
+      const a = points[i];
+      const b = points[i + 1];
+      const zA = this._zOf(a, statePosition, speed, note.scrollMod);
+      const zB = this._zOf(b, statePosition, speed, note.scrollMod);
+      if (zA === null || zB === null || !this._segmentVisible(zA, zB)) continue;
+      const geometry = this._segmentScreenRuns(a, b, zA, zB, this._easing(a, 'left'), this._easing(a, 'right'), isVoid, note.pathAngle);
+      if (geometry) polys.push(geometry.runs[0].poly);
+    }
+    if (!isVoid) {
+      // VoidPoint draws no head/tail mesh; slides draw a tap at both ends.
+      const ends = points.length > 1 ? [points[0], points[points.length - 1]] : [points[0]];
+      const caps = [];
+      for (const point of ends) {
+        const zp = this._zOf(point, statePosition, speed, note.scrollMod);
+        if (zp === null || !this._visible(zp)) continue;
+        const quad = this._tapQuad(point, note.pathAngle, zp, 0.001);
+        if (quad) caps.push(quad);
+      }
+      return caps.concat(polys);
+    }
+    return polys;
   }
 
   // -------------------------------------------------------------------------------------
@@ -2960,9 +2972,7 @@ export class PlayfieldRenderer {
       if (n.kind === 5) continue;
       const z = this._visibleAnchorZ(n, stateAt(n.group), speed);
       if (z === null) continue;
-      const poly = this._pickPolygon(n, z, stateAt, speed);
-      if (!poly) continue;
-      if (!pointInPolygon(px, py, poly)) continue;
+      if (!this._noteSilhouette(n, z, stateAt, speed).some((poly) => pointInPolygon(px, py, poly))) continue;
       if (z > bestZ) {
         bestZ = z;
         best = n.key;
@@ -2970,47 +2980,6 @@ export class PlayfieldRenderer {
     }
     this.lastPick = best;
     return best;
-  }
-
-  /**
-   * Silhouette used for picking: head quad, plus the whole body span for slides/voids. The
-   * body quad spans first..last rather than only the final interval so a long object stays
-   * pickable after its head has scrolled behind the camera.
-   */
-  _pickPolygon(note, z, stateAt, speed) {
-    const quad = this._tapQuad(note.first, note.pathAngle, z, 0);
-    if (!quad) return null;
-    if (note.kind !== 1 && note.kind !== 3) return quad;
-
-    const statePosition = stateAt(note.group);
-    // Sample the body interval between the first and last point; SegmentPoint scales its mesh Z
-    // by (endZ - startZ), so a linear sample is the right approximation here. Only the first
-    // interval whose corners all project is returned, which keeps a slide pickable even when its
-    // head is already behind the near plane and cannot be projected at all.
-    const zA = this._zOf(note.first, statePosition, speed, note.scrollMod);
-    const zB = this._zOf(note.last, statePosition, speed, note.scrollMod);
-    if (zA === null || zB === null) return quad;
-    const steps = 4;
-    for (let i = 0; i < steps; i++) {
-      const s0 = i / steps;
-      const s1 = (i + 1) / steps;
-      const za = lerp(zA, zB, s0);
-      const zb = lerp(zA, zB, s1);
-      if (!this._segmentVisible(za, zb)) continue;
-      const l = note.first.left + 0.02;
-      const r = note.last.right - 0.02;
-      const y = JUDGEMENT.tapSurfaceY + 0.001;
-      const [ax0, az0] = note.pathAngle(l * LANES.toWorld, za);
-      const [ax1, az1] = note.pathAngle(r * LANES.toWorld, za);
-      const [bx2, bz2] = note.pathAngle(r * LANES.toWorld, zb);
-      const [bx3, bz3] = note.pathAngle(l * LANES.toWorld, zb);
-      const p0 = this.project(ax0, y, az0);
-      const p1 = this.project(ax1, y, az1);
-      const p2 = this.project(bx2, y, bz2);
-      const p3 = this.project(bx3, y, bz3);
-      if (p0 && p1 && p2 && p3) return quad.concat([p0, p1, p2, p3]);
-    }
-    return quad;
   }
 
   /** Convenience: pick straight from a pointer/mouse event on the canvas. */

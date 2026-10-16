@@ -2,7 +2,7 @@
  * renderer.test.js — regression tests for Canvas perspective playfield renderer.
  *
  * Runs with the bundled Node test runner and no dependencies:
- *   node --test website_loader/renderer.test.js
+ *   node --test renderer.test.js
  *
  * The headline case is the "notes stop halfway down the field" defect: the renderer resolved the
  * conductor's `positionAt`/`timeAt` from `compiled.chart` (which carries DATA ONLY), so it fell
@@ -1593,4 +1593,31 @@ test('the ground quad uses the camera axes, not a constant depth', () => {
   const band = renderer._groundBoundary(quad, midY);
   const chord = quad.farL.x + (quad.nearL.x - quad.farL.x) * ((midY - quad.farL.y) / (quad.nearL.y - quad.farL.y));
   assert.ok(Math.abs(band.left.x - chord) < 1e-9, 'left edge is straight');
+});
+
+test('slide head is pickable and highlighted at its own depth, not the painter anchor', () => {
+  const { canvas, calls } = makeCanvas();
+  const renderer = new PlayfieldRenderer(canvas, { textureUrl: null });
+  renderer.setChart(makeFixture());
+  const slide = renderer.notes.find((n) => n.key === 'n4');
+  // Find a time where the head is near the line and the tail is further up the field.
+  const time = slide.first.time - 0.05;
+  renderer.render(time, { scrollSpeed: 0.1 });
+  const { speed, stateAt } = renderer._frameState();
+  const zHead = renderer._zOf(slide.first, stateAt(0), speed, slide.scrollMod);
+  const zTail = renderer._zOf(slide.last, stateAt(0), speed, slide.scrollMod);
+  const anchor = renderer._visibleAnchorZ(slide, stateAt(0), speed);
+  assert.ok(Math.abs(anchor - zHead) > 0.5, `anchor ${anchor} differs from head ${zHead} (tail ${zTail})`);
+
+  const head = renderer._tapQuad(slide.first, slide.pathAngle, zHead, 0);
+  const cx = head.reduce((s, p) => s + p.x, 0) / 4;
+  const cy = head.reduce((s, p) => s + p.y, 0) / 4;
+  assert.equal(renderer.pick(cx, cy), 'n4', 'clicking the drawn head selects the slide');
+
+  // The selection outline's first ring is the head quad: it must sit on the drawn head.
+  calls.length = 0;
+  renderer._drawHighlight(renderer.ctx, slide, anchor, stateAt, speed, true);
+  const move = calls.find((c) => c.name === 'moveTo');
+  assert.ok(Math.abs(move.args[0] - head[0].x) < 0.5 && Math.abs(move.args[1] - head[0].y) < 0.5,
+    'highlight head ring starts at the drawn head');
 });
