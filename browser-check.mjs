@@ -70,7 +70,7 @@ await evaluate("document.querySelector('#settings-link').click()");
 await waitFor(visible('#settings-view'),'settings screen from catalog');
 assert.equal(await evaluate('location.hash'),'#settings');
 assert.equal(await evaluate("document.querySelector('#settings-title').textContent"),'Settings');
-assert.equal(await evaluate("document.querySelector('#settings-origin').textContent"),'Back returns to the catalog.');
+assert.equal(await evaluate("document.querySelector('#settings-origin').textContent"),'Returns to the song list.');
 // showSettings focuses the heading inside a requestAnimationFrame.
 await evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
 assert.equal(await evaluate("document.activeElement.id"),'settings-title','the settings heading must take focus');
@@ -142,7 +142,7 @@ await evaluate("document.querySelector('#settings-link').click()");
 await waitFor(visible('#settings-view'),'settings screen from viewer');
 const clockAtOpen=await evaluate("(()=>{const m=window.__media[0];return {printed:document.querySelector('#time').textContent,seek:Number(document.querySelector('#seek').value),mediaTime:m?Math.round(m.currentTime*1000)/1000:null,mediaPaused:m?m.paused:null};})()");
 assert.equal(await evaluate('location.hash'),'#settings');
-assert.equal(await evaluate("document.querySelector('#settings-origin').textContent"),'Back returns to the chart you opened; it stays paused.');
+assert.equal(await evaluate("document.querySelector('#settings-origin').textContent"),'Returns to the chart. It stays paused.');
 assert.equal(await isVisible('#viewer-view'),false,'settings must hide the viewer');
 await evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
 assert.equal(await evaluate("document.activeElement.id"),'settings-title');
@@ -287,7 +287,7 @@ await search('');await evaluate(`window.__fetchOriginal=window.fetch;window.__ch
 await clickDifficulty(luxe,bloodlust);await waitFor('window.__chartHeld','first chart held');await backToSongs();await search('Herm');await clickDifficulty(herm,lunarHerm);await chartReady(herm,lunarHerm);await evaluate('window.__releaseChart()');await delay(350);await chartReady(herm,lunarHerm);assert.equal(await evaluate('location.hash'),route(herm,lunarHerm));await evaluate('window.fetch=window.__fetchOriginal');
 // Hold inside PlaybackClock.load to exercise the real serialized audio queue.
 await evaluate(`(async()=>{const {PlaybackClock}=await import('./audio.js');window.__originalLoad=PlaybackClock.prototype.load;window.__audioHeld=false;PlaybackClock.prototype.load=async function(url,...args){if(!window.__audioHeld&&url===${JSON.stringify(luxe.audioUrl)}){window.__audioHeld=true;await new Promise(resolve=>window.__releaseAudio=resolve);}return window.__originalLoad.call(this,url,...args);};})()`);
-await backToSongs();await search('Luxe');await clickDifficulty(luxe,bloodlust);await waitFor('window.__audioHeld','first audio held');await backToSongs();await search('Herm');await clickDifficulty(herm,lunarHerm);await evaluate('window.__releaseAudio()');await chartReady(herm,lunarHerm);assert.equal(await evaluate("document.querySelector('#audio-status').textContent"),'SILENT PREVIEW');assert.equal(await evaluate('window.__media.every(el=>el.paused)'),true);await evaluate("(async()=>{const {PlaybackClock}=await import('./audio.js');PlaybackClock.prototype.load=window.__originalLoad;})()");
+await backToSongs();await search('Luxe');await clickDifficulty(luxe,bloodlust);await waitFor('window.__audioHeld','first audio held');await backToSongs();await search('Herm');await clickDifficulty(herm,lunarHerm);await evaluate('window.__releaseAudio()');await chartReady(herm,lunarHerm);assert.equal(await evaluate("document.querySelector('#audio-status').textContent"),'Silent');assert.equal(await evaluate('window.__media.every(el=>el.paused)'),true);await evaluate("(async()=>{const {PlaybackClock}=await import('./audio.js');PlaybackClock.prototype.load=window.__originalLoad;})()");
 // Two queued offset reloads while playing: hold the second REAL readiness completion,
 // then navigate to a held chart. A stale reload must not resume old music in a new viewer.
 await backToSongs();await search('Luxe');await clickDifficulty(luxe,defaultLuxe);await chartReady(luxe,defaultLuxe);
@@ -301,7 +301,7 @@ await clickDifficulty(luxe,bloodlust);await waitFor('window.__chartHeld','back r
 await search('');await call('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});await delay(250);const mobileSelection=await evaluate("({overflow:document.documentElement.scrollWidth>innerWidth,width:document.documentElement.scrollWidth,viewport:innerWidth,headers:[...document.querySelectorAll('.catalog-table thead th')].map(el=>({text:el.textContent,left:el.getBoundingClientRect().left,right:el.getBoundingClientRect().right})),linksFit:[...document.querySelectorAll('a.catalog-difficulty')].every(el=>{const r=el.getBoundingClientRect();return r.width>0&&r.left>=0&&r.right<=innerWidth;})})");assert.equal(mobileSelection.overflow,false);assert.equal(mobileSelection.headers.length,5);assert.ok(mobileSelection.headers.every(header=>header.left>=0&&header.right<=mobileSelection.viewport),'All four native difficulty column headings must fit mobile viewport');assert.equal(mobileSelection.linksFit,true,'Every available mobile difficulty link must fit without sideways scrolling');await screenshot('selection-mobile.png');
 await search('Luxe');await clickDifficulty(luxe,defaultLuxe);await chartReady(luxe,defaultLuxe);await delay(250);const reopenedCanvas=await evaluate("({overflow:document.documentElement.scrollWidth>innerWidth,canvasWidth:document.querySelector('#playfield').getBoundingClientRect().width,pixelWidth:document.querySelector('#playfield').width,stageWidth:document.querySelector('.stage').clientWidth})");assert.equal(reopenedCanvas.overflow,false);assert.ok(reopenedCanvas.canvasWidth>100&&reopenedCanvas.canvasWidth<=reopenedCanvas.stageWidth+2);assert.ok(Math.abs(reopenedCanvas.pixelWidth-reopenedCanvas.canvasWidth)<3,'Drawing buffer must resize after hidden viewport change');console.log('MOBILE SELECTION / HIDDEN CANVAS RESIZE',JSON.stringify({mobileSelection,reopenedCanvas}));
 await call('Emulation.setDeviceMetricsOverride',{width:1440,height:1000,deviceScaleFactor:1,mobile:false});await delay(250);
-const initial=await evaluate("({status:document.querySelector('#status').textContent,playDisabled:document.querySelector('#play').disabled,notes:document.querySelector('#note-count').textContent,audio:document.querySelector('#audio-status').textContent,overflow:document.documentElement.scrollWidth>innerWidth})");console.log('EXPLICIT DEFAULT LUXE',initial);assert.equal(initial.playDisabled,false);assert.equal(initial.overflow,false);if(luxe.audioUrl)assert.equal(initial.audio,'LOCAL AUDIO','Mapped WAV must actually decode');await evaluate('window.__clickCount=0');
+const initial=await evaluate("({status:document.querySelector('#status').textContent,playDisabled:document.querySelector('#play').disabled,notes:document.querySelector('#note-count').textContent,audio:document.querySelector('#audio-status').textContent,overflow:document.documentElement.scrollWidth>innerWidth})");console.log('EXPLICIT DEFAULT LUXE',initial);assert.equal(initial.playDisabled,false);assert.equal(initial.overflow,false);if(luxe.audioUrl)assert.equal(initial.audio,'Song audio','Mapped WAV must actually decode');await evaluate('window.__clickCount=0');
  const volumeLabels=await evaluate("['music-volume','hit-volume'].map(id=>{const el=document.getElementById(id);return {label:el.labels[0].textContent.trim(),value:el.value,min:el.min,max:el.max,step:el.step};})");
  assert.deepEqual(volumeLabels,[{label:'Music volume',value:'0.7',min:'0',max:'1',step:'0.01'},{label:'Hit-sound volume',value:'0.7',min:'0',max:'1',step:'0.01'}]);
  // This block depends on defaults the settings-parking case deliberately changed (rate 1.5, scroll
@@ -708,9 +708,9 @@ assert.ok(await evaluate("parseFloat(document.querySelector('#time').textContent
    return evaluate('({...window.__volumeCheck,hits:[...window.__volumeCheck.hits]})');
  };
  await setVolume('music-volume',0);await setVolume('hit-volume',0.43);
- const musicMuted=await playVolumeWindow();assert.equal(musicMuted.music,0);if(initial.audio==='LOCAL AUDIO')assert.equal(musicMuted.media,0);assert.ok(musicMuted.hits.length>0,'Music mute must leave hit sounds active');assert.ok(musicMuted.hits.every(v=>v===0.43),'Hit sounds must use their own selected gain');
+ const musicMuted=await playVolumeWindow();assert.equal(musicMuted.music,0);if(initial.audio==='Song audio')assert.equal(musicMuted.media,0);assert.ok(musicMuted.hits.length>0,'Music mute must leave hit sounds active');assert.ok(musicMuted.hits.every(v=>v===0.43),'Hit sounds must use their own selected gain');
  await setVolume('music-volume',0.31);await setVolume('hit-volume',0);
- const hitsMuted=await playVolumeWindow();assert.equal(hitsMuted.music,0.31);if(initial.audio==='LOCAL AUDIO')assert.equal(hitsMuted.media,0.31);assert.deepEqual(hitsMuted.hits,[],'Zero hit volume must suppress clicks without muting music');
+ const hitsMuted=await playVolumeWindow();assert.equal(hitsMuted.music,0.31);if(initial.audio==='Song audio')assert.equal(hitsMuted.media,0.31);assert.deepEqual(hitsMuted.hits,[],'Zero hit volume must suppress clicks without muting music');
  await setVolume('hit-volume',0.54);await evaluate("document.querySelector('#hit-sounds').checked=false;document.querySelector('#hit-sounds').dispatchEvent(new Event('change'))");
  const toggleMuted=await playVolumeWindow();assert.deepEqual(toggleMuted.hits,[]);assert.equal(toggleMuted.music,0.31);
  await evaluate("document.querySelector('#hit-sounds').checked=true;document.querySelector('#hit-sounds').dispatchEvent(new Event('change'))");
@@ -724,7 +724,7 @@ await evaluate("[...document.querySelectorAll('#difficulties .difficulty')].find
 assert.equal(await evaluate('location.hash'),route(herm,emptyHerm));assert.equal(await evaluate("document.querySelector('#play').disabled && !document.querySelector('#empty-state').hidden"),true);
 await backToSongs();await search('Luxe');await clickDifficulty(luxe,defaultLuxe);await chartReady(luxe,defaultLuxe);
 assert.equal(await evaluate('window.__volumeCheck.music'),0.31,'Chart switching must preserve music gain');
- if(initial.audio==='LOCAL AUDIO')assert.equal(await evaluate('window.__volumeCheck.media'),0.31,'Loaded music media must retain its selected gain');
+ if(initial.audio==='Song audio')assert.equal(await evaluate('window.__volumeCheck.media'),0.31,'Loaded music media must retain its selected gain');
  const switched=await playVolumeWindow();assert.ok(switched.hits.length>0);assert.ok(switched.hits.every(v=>v===0.54),'Chart switching must preserve hit-sound gain');
  await setVolume('music-volume',0.7);await setVolume('hit-volume',0.7);
  await evaluate("document.querySelector('#search').value='';document.querySelector('#search').dispatchEvent(new Event('input'));document.querySelector('#seek').value='15';document.querySelector('#seek').dispatchEvent(new Event('input'));");
