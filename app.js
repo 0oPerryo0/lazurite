@@ -22,6 +22,8 @@ export function catalogCounts(songs){return {songs:songs.length,difficulties:son
 export function resourceVariant(song,library){const duplicate=library.filter(s=>s.title===song.title).length>1;return duplicate?(song.difficulties.every(d=>d.id>3)?'Alternate version':'Original version'):'';}
 // The viewer's chart title, used both when a chart is opened and when the settings screen returns
 // to a parked chart (whose document title was replaced by the settings screen's own title).
+// The catalog's document title; it matches index.html's static <title> so crawlers see one name.
+export const catalogDocumentTitle='Lazurite · Crystallium chart viewer';
 export function chartDocumentTitle(song,difficulty){return song&&difficulty?`${song.title} · ${difficulty.name} · Lazurite`:'Lazurite';}
 // Same title, derived straight from a deep-link route so it can be restored before the chart JSON
 // has arrived (the route already names the record; the parsed chart JSON is not required).
@@ -226,7 +228,7 @@ export async function startApp(){
     settingsOpen=false;settingsSession=null;settingsReturn=null;$('settings-view').hidden=true;$('count').hidden=false;
     if(objectUrl){URL.revokeObjectURL(objectUrl);objectUrl=null;}customAudio=null;$('audio-file').value='';
     $('viewer-view').hidden=true;$('inspect-toggle').hidden=true;$('catalog-view').hidden=false;
-    $('catalog-message').textContent=message;$('catalog-message').hidden=!message;document.title='Lazurite';
+    $('catalog-message').textContent=message;$('catalog-message').hidden=!message;document.title=catalogDocumentTitle;
     // Clear a completed or in-flight audio source only after its serialized load settles.
     const generation=loadGeneration;queueAudio(async()=>{if(generation!==loadGeneration||viewerActive)return;await clock.load(null);clock.pause();});
     if(wasViewer)requestAnimationFrame(()=>{if(viewerActive)return;$('catalog-scroll').scrollLeft=catalogPosition.left;(catalogPosition.focus?.isConnected?catalogPosition.focus:$('search')).focus({preventScroll:true});window.scrollTo(0,catalogPosition.top);});
