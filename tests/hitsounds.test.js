@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {HitSoundPlayer} from './hitsounds.js';
+import {HitSoundPlayer} from '../hitsounds.js';
 function player(){const p=new HitSoundPlayer();p.setChart({notes:[{points:[{time:1}]},{points:[{time:2}]},{points:[{time:2}]},{points:[{time:3}]}]});p.clicks=[];p.tap=n=>p.clicks.push(n);return p;}
 test('crossing each note head emits once; chords are normalized',()=>{const p=player();p.reset(0.9);assert.equal(p.update(1.1,true),1);p.update(1.2,true);p.reset(1.9);assert.equal(p.update(2.1,true),2);assert.deepEqual(p.clicks,[1,2]);});
 test('seeks and paused scrubbing do not emit missed-note bursts',()=>{const p=player();p.update(3.5,true);p.update(1.5,false);assert.deepEqual(p.clicks,[]);p.reset(1.9);p.update(2.1,true);assert.deepEqual(p.clicks,[2]);});

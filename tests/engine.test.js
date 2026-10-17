@@ -1,14 +1,14 @@
 /**
  * engine.test.js — offline checks for engine.js.
  *
- * Run from this directory:  node --test engine.test.js
+ * Run from the repo root:  node --test tests/engine.test.js
  *
- * The corpus checks read the chart payloads published with this folder under
+ * The corpus checks read the chart payloads published with the viewer under
  * `charts/*.json` (the same static files the page fetches; never written to).
  * Expected counts are assertions against the recovered corpus
  * (21 payloads / 63 difficulty records / 74,967 serialized lane points) as documented in
- * `../analysis/chart-inventory.json`, `../docs/02-chart-format.md` and
- * `../README.md`; they are intentionally strict. A new corpus must come with a new
+ * `../../analysis/chart-inventory.json`, `../../docs/02-chart-format.md` and
+ * `../../README.md`; they are intentionally strict. A new corpus must come with a new
  * manifest and updated expectations, not looser assertions.
  */
 
@@ -46,14 +46,14 @@ import {
   NOTE_TYPE,
   DIFFICULTY_NAME,
   EASING_NAMES,
-} from './engine.js';
+} from '../engine.js';
 
 // ---------------------------------------------------------------------------------------
 // Corpus loading (read once; parse/compile once per difficulty)
 // ---------------------------------------------------------------------------------------
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const chartDir = path.resolve(here, 'charts');
+const chartDir = path.resolve(here, '..', 'charts');
 const chartFiles = readdirSync(chartDir).filter((name) => name.endsWith('.json')).sort();
 
 const corpus = chartFiles.map((file) => {

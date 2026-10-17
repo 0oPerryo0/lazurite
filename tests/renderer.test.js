@@ -2,7 +2,7 @@
  * renderer.test.js — regression tests for Canvas perspective playfield renderer.
  *
  * Runs with the bundled Node test runner and no dependencies:
- *   node --test renderer.test.js
+ *   node --test tests/renderer.test.js
  *
  * The headline case is the "notes stop halfway down the field" defect: the renderer resolved the
  * conductor's `positionAt`/`timeAt` from `compiled.chart` (which carries DATA ONLY), so it fell
@@ -13,7 +13,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { PlayfieldRenderer, SCROLL, CULL, TRACK, worldToCamera, cameraAxesFromQuaternion, CAMERA_ROTATION, makeMembership, windingNumber, segmentPolygonParams, segmentsIntersect, clipEdgeToBoundary, polygonBounds, ringSignedArea, ringIsSimple, makeSlideEdgeGrid } from './renderer.js';
+import { PlayfieldRenderer, SCROLL, CULL, TRACK, worldToCamera, cameraAxesFromQuaternion, CAMERA_ROTATION, makeMembership, windingNumber, segmentPolygonParams, segmentsIntersect, clipEdgeToBoundary, polygonBounds, ringSignedArea, ringIsSimple, makeSlideEdgeGrid } from '../renderer.js';
 
 // ---------------------------------------------------------------------------------------
 // Harness: a recording 2D context and a fake canvas, no DOM required

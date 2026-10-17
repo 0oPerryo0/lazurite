@@ -5,7 +5,7 @@
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { PlaybackClock, DEFAULTS, VERSION } from './audio.js';
+import { PlaybackClock, DEFAULTS, VERSION } from '../audio.js';
 
 /** Controllable wall clock. */
 function fakeClock() {

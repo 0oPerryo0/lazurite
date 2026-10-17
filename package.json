@@ -1,5 +1,5 @@
 {
   "name": "crystallium-chart-viewer", "private": true, "type": "module",
-  "scripts": {"start": "node server.mjs", "test": "node --test *.test.js"},
+  "scripts": {"start": "node server.mjs", "test": "node --test tests/"},
   "engines": {"node": ">=18"}
 }
