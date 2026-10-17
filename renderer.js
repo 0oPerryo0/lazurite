@@ -78,7 +78,7 @@
  * strokes of an interval are clipped.
  *
  * Visual tokens for the field/UI layer (parent-provided frontend palette): background near
- * #0b1013, charcoal #101719, warm ivory #eeeade, mint #9ee6cf. These are UI tokens, not
+ * #0e1422, lapis surface #151c2e, warm ivory #eeeade, mint #9ee6cf. These are UI tokens, not
  * recovered game colours (see limit 1).
  */
 
@@ -1246,8 +1246,8 @@ export class PlayfieldRenderer {
     };
 
     this.palette = Object.freeze({
-      background: '#0b1013',
-      surface: '#101719',
+      background: '#0e1422',
+      surface: '#151c2e',
       ivory: '#eeeade',
       mint: '#9ee6cf',
       ...(options.palette || {}),

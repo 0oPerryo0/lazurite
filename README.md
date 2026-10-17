@@ -43,7 +43,7 @@ On Windows PowerShell, use `$env:PORT=4175; node server.mjs` instead.
 
 Charts play silently with tap sounds unless audio is available:
 
-- **In the browser:** use **Attach local audio** in the Inspector to pick the matching song file. It is played locally and never uploaded.
+- **In the browser:** use **Load audio file** in the Inspector to pick the matching song file. It is played locally and never uploaded.
 - **Through the local server:** [audio-map.json](audio-map.json) maps chart IDs to audio files in the *parent* folder of this repo. The server only serves files that exist there; in a plain clone none do, so every chart runs silently. These files are never published.
 
 ## Hosting

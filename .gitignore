@@ -1,7 +1,24 @@
-# Agent working notes. Not part of the published viewer.
+# Agent instructions, notes and tool state. Local only, never published.
 AGENTS.md
+AGENTS.*.md
+CLAUDE.md
+CLAUDE.local.md
+GEMINI.md
 CONTRACTS.md
 AUDIO.md
+DESIGN.md
+.claude/
+.claude-work/
+.agents/
+.codex/
+.gemini/
+.cursor/
+.cursorrules
+.windsurf/
+.windsurfrules
+.clinerules
+.aider*
+.github/copilot-instructions.md
 
 # Local check output, screenshots and one-off probes.
 *.log
@@ -23,10 +40,6 @@ node_modules/
 coverage/
 .env
 .env.*
-.claude/
-.claude-work/
-CLAUDE.md
-CLAUDE.local.md
 
 # Editor and OS junk.
 .DS_Store
